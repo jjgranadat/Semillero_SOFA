@@ -1,0 +1,25 @@
+
+%así sincronizo la trama transmitida con la recibida, en MATLAB:
+
+%sym_tx_y: símbolos transmitidos complejos (es decir, sin demodular)
+%const_y: símbolos recibidos complejos
+
+
+TESTEa2=abs(xcorr(abs(sym_tx_y) - mean(abs(sym_tx_y)), abs(const_y) - mean(abs(const_y))));
+TESTEa2=TESTEa2(length(sym_tx_y):end);
+TESTEa1=abs(xcorr(abs(sym_tx_x) - mean(abs(sym_tx_x)), abs(const_x) - mean(abs(const_x))));
+TESTEa1=TESTEa1(length(sym_tx_x):end);
+
+SyncA = find(max(TESTEa1) == TESTEa1,1);
+SyncB = find(max(TESTEa2) == TESTEa2,1);
+
+sync_b(cont)=SyncB;
+
+%%%%%
+%Rotación de la constelación
+
+for ph=0:3
+qam_demod_rx = demodulate(hDemod, const_y(1:end)*exp(ph*1i*pi/2));
+error_before_clustering(ph+1)=biterr(qam_demod_tx,qam_demod_rx);
+end
+SER_before_clustering=min(error_before_clustering)/(length(const_y)*4)
