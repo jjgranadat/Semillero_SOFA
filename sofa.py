@@ -103,7 +103,9 @@ def sync_signals(short_signal, long_signal):
     # del largo.
     longer_signal = np.concatenate((long_signal, long_signal, long_signal))
     correlation = np.correlate(short_signal, longer_signal, mode="full")
+    plt.figure()
     plt.plot(correlation)
+    plt.show()
     index = np.argmax(correlation) + 1
     print(index)
     delay = index - len(short_signal)
