@@ -102,7 +102,7 @@ def sync_signals(short_signal, long_signal):
     # Se concatena para asegurar de que el array recibido esté contenido dentro
     # del largo.
     longer_signal = np.concatenate((long_signal, long_signal, long_signal))
-    correlation = np.correlate(longer_signal, short_signal, mode="full")
+    correlation = np.correlate(short_signal, longer_signal, mode="full")
     plt.plot(correlation)
     index = np.argmax(correlation) + 1
     print(index)
