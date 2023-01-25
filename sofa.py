@@ -68,6 +68,73 @@ def add_awgn(snr: float, X):
     Xi = np.imag(X)
     return (calc_noise(snr, Xr), calc_noise(snr, Xi))
 
+def demodulate(X_rx, mod_dict):
+    """Demodula usando el método tradicional de rejilla.
+
+    :param X_rx: constelación recibida
+    :param mod_dict: diccionario de modulación
+    :return: constelación demodulada"""
+    demodulated = []
+    # Diccionario para demodular
+    demod_dict = dict(zip(mod_dict.values(), mod_dict.keys()))
+    for x in X_rx:
+        # Distancia a cada centroide
+        dist = np.abs(np.array(list(mod_dict.values())) - x)
+        # Índice del valor mínimo de distancia
+        index = list(dist).index(np.min(dist))
+        # Centroide más cercano al símbolo
+        demodulated.append(index)
+    return np.array(demodulated)
+
+def demodulate_knn(X_rx, sym_tx, k):
+    """Demodula usando KNN.
+    
+    :param X_rx: constelación recibida
+    :param sym_tx: símbolos transmitidos
+    :param k: parámetro k del algoritmo KNN
+    :return: constelación demodulada
+    """
+    X = np.array([X_rx.real, X_rx.imag]).T
+    y = sym_tx
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3)
+    
+    # Número de vecinos
+    model = KNeighborsClassifier(n_neighbors = k)
+    model.fit(X_train, y_train)
+    return model.predict(X)
+
+def demodulate_svm(X_rx, sym_tx, C, gamma):
+    """Demodula usando SVM.
+    
+    :param X_rx: constelación recibida
+    :param sym_tx: símbolos transmitidos
+    :param C: parámetro C del algoritmo SVM
+    :param gamma: parámetro gamma del algoritmo SVM
+    :return: constelación demodulada
+    """
+    X = np.array([X_rx.real, X_rx.imag]).T
+    y = sym_tx
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3)
+
+    model = SVC(C = C, gamma = gamma)
+    model.fit(X_train, y_train)
+    return model.predict(X)
+
+def demodulate_kmeans(X_rx, mod_dict):
+    """Demodula usando K-Means.
+    
+    :param X_rx: constelación recibida
+    :param mod_dict: diccionario de modulación
+    :return: constelación demodulada
+    """
+    X = list(zip(X_rx.real, X_rx.imag))
+    A_mc = [(x.real, x.imag) for x in list(mod_dict.values())]
+    model = KMeans(n_clusters = 16, n_init = 1, init = np.array(A_mc))
+    model.fit(X)
+
+    return model.predict(X)
 
 def symbol_error_rate(sym_rx, sym_tx):
     """Calcula la rata de error de símbolo.
@@ -99,6 +166,12 @@ def bit_error_rate(sym_rx, sym_tx):
 
 
 def sync_signals(short_signal, long_signal):
+    """Sincroniza dos señales.
+    
+    :param short_signal: señal corta, usualmente la recibida
+    :param long_signal: señal larga, usualmente la transmitida
+    :return: una copia de ambas señales sincronizadas, en el mismo orden de entrada de parámetros
+    """
     # Se concatena para asegurar de que el array recibido esté contenido dentro
     # del largo.
     longer_signal = np.concatenate((long_signal, long_signal, long_signal))
