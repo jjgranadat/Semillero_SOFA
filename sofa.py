@@ -26,17 +26,75 @@ MOD_DICT = {
 }  # 1111
 
 
-def mod_norm(const, power):
+def mod_norm(const, power: float = 1.0):
     """Calcula el coeficiente de escala para normalizar una señal dada
     una potencia promedio.
 
     :param const: constelación.
-    :param power: potencia promedio deseada.
+    :param power - float : potencia promedio deseada.
     :return: coeficiente de escala.
     """
     constPow = np.mean([x**2 for x in np.abs(const)])
     scale = np.sqrt(power / constPow)
     return scale
+
+
+def calc_noise(snr: float, X):
+    """Añade ruido a un vector.
+
+    :param snr - float : relación señal a ruido (SNR)
+    :param X: vector original
+    :return: vector con ruido
+    """
+    X_avg_p = np.mean(np.power(X, 2))
+    X_avg_db = 10 * np.log10(X_avg_p)
+
+    noise_avg_db = X_avg_db - snr
+    noise_avg_p = np.power(10, noise_avg_db / 10)
+    # Al no poner el parámetro loc se asume media 0
+    noise = np.random.normal(scale=np.sqrt(noise_avg_p), size=len(X))
+    return X + noise
+
+
+def add_awgn(snr: float, X):
+    """Añade ruido a una constelación.
+
+    :param snr: relación señal a ruido (SNR)
+    :param X: constelación original
+    :return: constelación con ruido
+    """
+    Xr = np.real(X)
+    Xi = np.imag(X)
+    return (calc_noise(snr, Xr), calc_noise(snr, Xi))
+
+
+def symbol_error_rate(sym_rx, sym_tx):
+    """Calcula la rata de error de símbolo.
+
+    :param sym_rx: vector de símbolos recibidos
+    :param sym_tx: vector de símbolos transmitidos
+    :return: rata de error de símbolo, cantidad de símbolos erróneos"""
+    error = 0
+    for i in range(len(sym_tx)):
+        if sym_rx[i] != sym_tx[i]:
+            error += 1
+    SER = error / len(sym_tx)
+    return SER, error
+
+
+def bit_error_rate(sym_rx, sym_tx):
+    """Calcula la rata de error de bit.
+
+    :param sym_rx: vector de símbolos recibidos
+    :param sym_tx: vector de símbolos transmitidos
+    :return: rata de error de bit, cantidad de bits erróneos"""
+    # Se transforman los símbolos a binario
+    sym_rx_str = "".join([f"{sym:04b}" for sym in sym_rx])
+    sym_tx_str = "".join([f"{sym:04b}" for sym in sym_tx])
+
+    error = sum(sym_rx_str[i] != sym_tx_str[i] for i in range(len(sym_rx_str)))
+    BER = error / len(sym_rx_str)
+    return BER, error
 
 
 def sync_signals(short_signal, long_signal):
