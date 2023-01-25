@@ -4,6 +4,11 @@ demodulación 16QAM
 import numpy as np
 import matplotlib.pyplot as plt
 
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.cluster import KMeans
+from sklearn.svm import SVC
+from sklearn.model_selection import train_test_split, GridSearchCV
+
 """
 Diccionario para modular símbolos 16QAM
 """
@@ -16,15 +21,15 @@ MOD_DICT = {
     5: -1 + 1j,  # 0101
     6: -1 - 3j,  # 0110
     7: -1 - 1j,  # 0111
-    8: 3 + 3j,  # 1000
-    9: 3 + 1j,  # 1001
+    8: +3 + 3j,  # 1000
+    9: +3 + 1j,  # 1001
     10: 3 - 3j,  # 1010
     11: 3 - 1j,  # 1011
     12: 1 + 3j,  # 1100
     13: 1 + 1j,  # 1101
     14: 1 - 3j,  # 1110
-    15: 1 - 1j,
-}  # 1111
+    15: 1 - 1j,  # 1111
+}
 
 
 def mod_norm(const, power: float = 1.0):
@@ -68,6 +73,7 @@ def add_awgn(snr: float, X):
     Xi = np.imag(X)
     return (calc_noise(snr, Xr), calc_noise(snr, Xi))
 
+
 def demodulate(X_rx, mod_dict):
     """Demodula usando el método tradicional de rejilla.
 
@@ -75,8 +81,7 @@ def demodulate(X_rx, mod_dict):
     :param mod_dict: diccionario de modulación
     :return: constelación demodulada"""
     demodulated = []
-    # Diccionario para demodular
-    demod_dict = dict(zip(mod_dict.values(), mod_dict.keys()))
+
     for x in X_rx:
         # Distancia a cada centroide
         dist = np.abs(np.array(list(mod_dict.values())) - x)
@@ -86,9 +91,10 @@ def demodulate(X_rx, mod_dict):
         demodulated.append(index)
     return np.array(demodulated)
 
+
 def demodulate_knn(X_rx, sym_tx, k):
     """Demodula usando KNN.
-    
+
     :param X_rx: constelación recibida
     :param sym_tx: símbolos transmitidos
     :param k: parámetro k del algoritmo KNN
@@ -96,17 +102,18 @@ def demodulate_knn(X_rx, sym_tx, k):
     """
     X = np.array([X_rx.real, X_rx.imag]).T
     y = sym_tx
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3)
-    
+
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3)
+
     # Número de vecinos
-    model = KNeighborsClassifier(n_neighbors = k)
+    model = KNeighborsClassifier(n_neighbors=k)
     model.fit(X_train, y_train)
     return model.predict(X)
 
+
 def demodulate_svm(X_rx, sym_tx, C, gamma):
     """Demodula usando SVM.
-    
+
     :param X_rx: constelación recibida
     :param sym_tx: símbolos transmitidos
     :param C: parámetro C del algoritmo SVM
@@ -115,26 +122,45 @@ def demodulate_svm(X_rx, sym_tx, C, gamma):
     """
     X = np.array([X_rx.real, X_rx.imag]).T
     y = sym_tx
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3)
 
-    model = SVC(C = C, gamma = gamma)
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3)
+
+    model = SVC(C=C, gamma=gamma)
     model.fit(X_train, y_train)
     return model.predict(X)
 
+
 def demodulate_kmeans(X_rx, mod_dict):
     """Demodula usando K-Means.
-    
+
     :param X_rx: constelación recibida
     :param mod_dict: diccionario de modulación
     :return: constelación demodulada
     """
     X = list(zip(X_rx.real, X_rx.imag))
     A_mc = [(x.real, x.imag) for x in list(mod_dict.values())]
-    model = KMeans(n_clusters = 16, n_init = 1, init = np.array(A_mc))
+    model = KMeans(n_clusters=16, n_init=1, init=np.array(A_mc))
     model.fit(X)
 
     return model.predict(X)
+
+
+def find_best_params(model, param_grid, X, y):
+    """Encuentra los parámetros que mejor funcionan para unos datos específicos
+    :param model: modelo de ML a optimizar
+    :param param_grid: diccionario de parámetros del modelo
+    :param X: datos de entrada
+    :param y: datos de salida validados
+    :return: diccionario de parámetros optimizado
+    """
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3)
+
+    grid = GridSearchCV(model(), param_grid, verbose=0)
+
+    grid.fit(X_train, y_train)
+
+    return grid.best_params_
+
 
 def symbol_error_rate(sym_rx, sym_tx):
     """Calcula la rata de error de símbolo.
@@ -167,7 +193,7 @@ def bit_error_rate(sym_rx, sym_tx):
 
 def sync_signals(short_signal, long_signal):
     """Sincroniza dos señales.
-    
+
     :param short_signal: señal corta, usualmente la recibida
     :param long_signal: señal larga, usualmente la transmitida
     :return: una copia de ambas señales sincronizadas, en el mismo orden de entrada de parámetros
