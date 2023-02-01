@@ -1,0 +1,112 @@
+%FRAGMENTO CÓDIGO MATLAB
+
+const_x=x.const_X;
+const_y=y.const_Y;
+
+sym_tx_x=tx.Constellation.Y;
+sym_tx_y=tx.Constellation.X;
+
+sym_tx_x=[sym_tx_x sym_tx_x];
+sym_tx_y=[sym_tx_y sym_tx_y];
+
+const_x=const_x*modnorm(const_x, 'avpow', nor);
+const_y=const_y*modnorm(const_y, 'avpow', nor);
+size(const_x);
+
+sym_tx_x=sym_tx_x*modnorm(sym_tx_x, 'avpow', nor);
+sym_tx_y=sym_tx_y*modnorm(sym_tx_y, 'avpow', nor);
+size(sym_tx_x);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+TWle=100000;
+for cont=1:1
+st=TWle*(cont-1)+1;
+N=TWle+st-1; %Número total de símbolos
+
+
+% st=1;
+% N=100000; %Número total de símbolos
+
+% if datcont < 3 || datcont==5
+    const_x=x.const_X(st:N);
+    const_y=y.const_Y(st:N);
+% else
+%     const_x=x250.const_X(st:N);
+%     const_y=y250.const_X(st:N);
+% end
+    
+    
+% scatterplot(const_x)
+% scatterplot(const_y)
+
+% %%%%%% JJ %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% sym_tx_x=tx.Constellation.Y;
+% sym_tx_y=tx.Constellation.X;
+% 
+% sym_tx_x=[sym_tx_x sym_tx_x];
+% sym_tx_y=[sym_tx_y sym_tx_y];
+% 
+% const_x=const_x*modnorm(const_x, 'avpow', nor);
+% const_y=const_y*modnorm(const_y, 'avpow', nor);
+% size(const_x);
+% 
+% sym_tx_x=sym_tx_x*modnorm(sym_tx_x, 'avpow', nor);
+% sym_tx_y=sym_tx_y*modnorm(sym_tx_y, 'avpow', nor);
+% size(sym_tx_x);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+TESTEa2=abs(xcorr(abs(sym_tx_y) - mean(abs(sym_tx_y)), abs(const_y) - mean(abs(const_y))));
+TESTEa2=TESTEa2(length(sym_tx_y):end);
+TESTEa1=abs(xcorr(abs(sym_tx_x) - mean(abs(sym_tx_x)), abs(const_x) - mean(abs(const_x))));
+TESTEa1=TESTEa1(length(sym_tx_x):end);
+
+SyncA = find(max(TESTEa1) == TESTEa1,1);
+SyncB = find(max(TESTEa2) == TESTEa2,1);
+
+sync_b(cont)=SyncB;
+
+% if datcont==6 && cont==3
+%     SyncA=SyncB;
+% end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% EVM_RMSx(1) = sqrt(sum(abs(const_x-exp(0i*pi/2)*sym_tx_x(SyncA:SyncA+length(const_x)-1)).^2)/sum(abs(exp(0i*pi/2)*sym_tx_x(SyncA:SyncA+length(const_x)-1)).^2))*100;
+% EVM_RMSx(2) = sqrt(sum(abs(const_x-exp(1i*pi/2)*sym_tx_x(SyncA:SyncA+length(const_x)-1)).^2)/sum(abs(exp(1i*pi/2)*sym_tx_x(SyncA:SyncA+length(const_x)-1)).^2))*100;
+% EVM_RMSx(3) = sqrt(sum(abs(const_x-exp(2i*pi/2)*sym_tx_x(SyncA:SyncA+length(const_x)-1)).^2)/sum(abs(exp(2i*pi/2)*sym_tx_x(SyncA:SyncA+length(const_x)-1)).^2))*100;
+% EVM_RMSx(4) = sqrt(sum(abs(const_x-exp(3i*pi/2)*sym_tx_x(SyncA:SyncA+length(const_x)-1)).^2)/sum(abs(exp(3i*pi/2)*sym_tx_x(SyncA:SyncA+length(const_x)-1)).^2))*100;
+% 
+% EVM_RMS_X = min(EVM_RMSx);
+
+EVM_RMSy(1) = sqrt(sum(abs(const_y-exp(0i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_x)-1)).^2)/sum(abs(exp(1i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_x)-1)).^2))*100;
+EVM_RMSy(2) = sqrt(sum(abs(const_y-exp(1i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_x)-1)).^2)/sum(abs(exp(1i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_x)-1)).^2))*100;
+EVM_RMSy(3) = sqrt(sum(abs(const_y-exp(2i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_x)-1)).^2)/sum(abs(exp(2i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_x)-1)).^2))*100;
+EVM_RMSy(4) = sqrt(sum(abs(const_y-exp(3i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_x)-1)).^2)/sum(abs(exp(3i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_x)-1)).^2))*100;
+EVM_RMS_Y = min(EVM_RMSy);
+
+%% %%%%%%%% demod lineal %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+M=16;
+myMapping= [3 2 1 0 7 6 5 4 11 10 9 8 15 14 13 12];
+hMod_ctrs = modem.qammod('M',M,'symbolorder','user-defined','symbolmapping',myMapping);
+hDemod_ctrs = modem.qamdemod(hMod_ctrs);
+
+hMod = modem.qammod(M);
+hDemod = modem.qamdemod(hMod);
+
+% hDemod.OutputType='bit';
+% hDemod_ctrs.OutputType='bit';
+
+tx_sync=exp(phase*1i*pi/2)*sym_tx_y(SyncB:SyncB+length(const_y)-1);
+
+tx_sync=tx_sync*modnorm(tx_sync,'avpow',10);
+const_y=const_y*modnorm(const_y,'avpow',10);
+
+qam_demod_tx = demodulate(hDemod, tx_sync);
+ 
+for ph=0:3
+qam_demod_rx = demodulate(hDemod, const_y(1:end)*exp(ph*1i*pi/2));
+error_before_clustering(ph+1)=biterr(qam_demod_tx,qam_demod_rx);
+end
+SER_before_clustering=min(error_before_clustering)/(length(const_y)*4)
