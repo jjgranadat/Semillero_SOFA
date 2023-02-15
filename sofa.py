@@ -135,14 +135,14 @@ def demodulate_kmeans(X_rx, mod_dict):
 
     :param X_rx: constelación recibida
     :param mod_dict: diccionario de modulación
-    :return: constelación demodulada
+    :return: constelación demodulada, modelo entrenado
     """
     X = list(zip(X_rx.real, X_rx.imag))
     A_mc = [(x.real, x.imag) for x in list(mod_dict.values())]
     model = KMeans(n_clusters=16, n_init=1, init=np.array(A_mc))
     model.fit(X)
 
-    return model.predict(X)
+    return model
 
 
 def find_best_params(model, param_grid, X, y):
@@ -168,10 +168,11 @@ def symbol_error_rate(sym_rx, sym_tx):
     :param sym_rx: vector de símbolos recibidos
     :param sym_tx: vector de símbolos transmitidos
     :return: rata de error de símbolo, cantidad de símbolos erróneos"""
-    error = 0
-    for i in range(len(sym_tx)):
-        if sym_rx[i] != sym_tx[i]:
-            error += 1
+    # error = 0
+    error = sum(rx != tx for rx, tx in zip(sym_rx, sym_tx))
+    # for i in range(len(sym_tx)):
+    #     if sym_rx[i] != sym_tx[i]:
+    #         error += 1
     SER = error / len(sym_tx)
     return SER, error
 
@@ -191,7 +192,7 @@ def bit_error_rate(sym_rx, sym_tx):
     return BER, error
 
 
-def sync_signals(short_signal, long_signal):
+def sync_signals(tx, rx):
     """Sincroniza dos señales.
 
     :param short_signal: señal corta, usualmente la recibida
@@ -200,18 +201,18 @@ def sync_signals(short_signal, long_signal):
     """
     # Se concatena para asegurar de que el array recibido esté contenido dentro
     # del largo.
-    longer_signal = np.concatenate((long_signal, long_signal, long_signal))
-    correlation = np.correlate(short_signal, longer_signal, mode="full")
-    plt.figure()
-    plt.plot(correlation)
-    plt.show()
-    index = np.argmax(correlation) + 1
-    print(index)
-    delay = index - len(short_signal)
-    print(delay)
-    print(f"El retraso es de {delay} posiciones")
+    tx_long = np.concatenate((tx, tx))
+    correlation = np.abs(
+        np.correlate(
+            np.abs(tx_long) - np.mean(np.abs(tx_long)),
+            np.abs(rx) - np.mean(np.abs(rx)),
+            mode="full",
+        )
+    )
+    delay = np.argmax(correlation) - len(rx) + 1
+    # print(f"El retraso es de {delay} posiciones")
 
-    sync_signal = np.roll(longer_signal, delay)
-    sync_signal = sync_signal[: len(short_signal)]
+    sync_signal = tx_long[delay:]
+    sync_signal = sync_signal[: len(rx)]
 
-    return short_signal, sync_signal
+    return sync_signal
