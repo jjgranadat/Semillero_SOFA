@@ -2,7 +2,6 @@
 demodulación 16QAM
 """
 import numpy as np
-import matplotlib.pyplot as plt
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.cluster import KMeans
@@ -74,36 +73,48 @@ def add_awgn(snr: float, X):
     return (calc_noise(snr, Xr), calc_noise(snr, Xi))
 
 
+def realify(X):
+    """Transforma un vector de números complejos en un vector de pares,
+    real e imaginario de tipo flotante.
+
+    :param X: constelación recibida
+    :return: constelación transformada"""
+
+    return np.array([X.real, X.imag]).T
+
+
 def demodulate(X_rx, mod_dict):
     """Demodula usando el método tradicional de rejilla.
 
     :param X_rx: constelación recibida
     :param mod_dict: diccionario de modulación
     :return: constelación demodulada"""
-    demodulated = []
+    demodulated = np.empty(len(X_rx), dtype = int)
 
-    for x in X_rx:
+    for i, x in enumerate(X_rx):
         # Distancia a cada centroide
         dist = np.abs(np.array(list(mod_dict.values())) - x)
         # Índice del valor mínimo de distancia
         index = list(dist).index(np.min(dist))
+        index = np.argmin(dist).flatten()
         # Centroide más cercano al símbolo
-        demodulated.append(index)
-    return np.array(demodulated)
+        demodulated[i] = index
+    return demodulated
 
 
-def demodulate_knn(X_rx, sym_tx, k):
+def demodulate_knn(X_rx, sym_tx, k, train_size=0.4):
     """Demodula usando KNN.
 
     :param X_rx: constelación recibida
     :param sym_tx: símbolos transmitidos
     :param k: parámetro k del algoritmo KNN
+    :param test_size: fracción de datos para entrenamiento
     :return: constelación demodulada
     """
-    X = np.array([X_rx.real, X_rx.imag]).T
+    X = realify(X_rx)
     y = sym_tx
 
-    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3)
+    X_train, _, y_train, _ = train_test_split(X, y, train_size=train_size)
 
     # Número de vecinos
     model = KNeighborsClassifier(n_neighbors=k)
@@ -111,19 +122,20 @@ def demodulate_knn(X_rx, sym_tx, k):
     return model.predict(X)
 
 
-def demodulate_svm(X_rx, sym_tx, C, gamma):
+def demodulate_svm(X_rx, sym_tx, C, gamma, train_size=0.4):
     """Demodula usando SVM.
 
     :param X_rx: constelación recibida
     :param sym_tx: símbolos transmitidos
     :param C: parámetro C del algoritmo SVM
     :param gamma: parámetro gamma del algoritmo SVM
+    :param train_size: fracción de datos para entrenamiento
     :return: constelación demodulada
     """
-    X = np.array([X_rx.real, X_rx.imag]).T
+    X = realify(X_rx)
     y = sym_tx
 
-    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3)
+    X_train, _, y_train, _ = train_test_split(X, y, train_size=train_size)
 
     model = SVC(C=C, gamma=gamma)
     model.fit(X_train, y_train)
@@ -137,7 +149,7 @@ def demodulate_kmeans(X_rx, mod_dict):
     :param mod_dict: diccionario de modulación
     :return: constelación demodulada, modelo entrenado
     """
-    X = list(zip(X_rx.real, X_rx.imag))
+    X = realify(X_rx)
     A_mc = [(x.real, x.imag) for x in list(mod_dict.values())]
     model = KMeans(n_clusters=16, n_init=1, init=np.array(A_mc))
     model.fit(X)
@@ -145,7 +157,7 @@ def demodulate_kmeans(X_rx, mod_dict):
     return model
 
 
-def find_best_params(model, param_grid, X, y):
+def find_best_params(model, param_grid, X_rx, sym_tx):
     """Encuentra los parámetros que mejor funcionan para unos datos específicos
     :param model: modelo de ML a optimizar
     :param param_grid: diccionario de parámetros del modelo
@@ -153,6 +165,9 @@ def find_best_params(model, param_grid, X, y):
     :param y: datos de salida validados
     :return: diccionario de parámetros optimizado
     """
+    X = realify(X_rx)
+    y = sym_tx
+
     X_train, _, y_train, _ = train_test_split(X, y, test_size=0.3)
 
     grid = GridSearchCV(model(), param_grid, verbose=0)
