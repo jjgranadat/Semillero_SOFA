@@ -2,6 +2,7 @@
 demodulación 16QAM
 """
 import numpy as np
+import scipy as sp
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.cluster import KMeans
@@ -89,7 +90,7 @@ def demodulate(X_rx, mod_dict):
     :param X_rx: constelación recibida
     :param mod_dict: diccionario de modulación
     :return: constelación demodulada"""
-    demodulated = np.empty(len(X_rx), dtype = int)
+    demodulated = np.empty(len(X_rx), dtype=int)
 
     for i, x in enumerate(X_rx):
         # Distancia a cada centroide
@@ -185,9 +186,6 @@ def symbol_error_rate(sym_rx, sym_tx):
     :return: rata de error de símbolo, cantidad de símbolos erróneos"""
     # error = 0
     error = sum(rx != tx for rx, tx in zip(sym_rx, sym_tx))
-    # for i in range(len(sym_tx)):
-    #     if sym_rx[i] != sym_tx[i]:
-    #         error += 1
     SER = error / len(sym_tx)
     return SER, error
 
@@ -205,6 +203,17 @@ def bit_error_rate(sym_rx, sym_tx):
     error = sum(sym_rx_str[i] != sym_tx_str[i] for i in range(len(sym_rx_str)))
     BER = error / len(sym_rx_str)
     return BER, error
+
+
+def curve_fit(f, x, y):
+    """Calcula los parámetros óptimos dada una función y unos puntos a optimizar.
+
+    :param f: función la cuál debe ser optimizada
+    :param x: coordenadas en el eje x
+    :param y: coordenadas en el eye y
+    return: parámetros optimizados para ajustar la función a las coordenadas dadas"""
+    popt, _ = sp.optimize.curve_fit(f, x, y)
+    return popt
 
 
 def sync_signals(tx, rx):
