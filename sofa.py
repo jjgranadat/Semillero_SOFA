@@ -3,6 +3,7 @@ demodulación 16QAM
 """
 import numpy as np
 import scipy as sp
+import tensorflow as tf
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.cluster import KMeans
@@ -109,7 +110,7 @@ def demodulate_knn(X_rx, sym_tx, k, train_size=0.4):
     :param X_rx: constelación recibida
     :param sym_tx: símbolos transmitidos
     :param k: parámetro k del algoritmo KNN
-    :param test_size: fracción de datos para entrenamiento
+    :param train_size: fracción de datos para entrenamiento
     :return: constelación demodulada
     """
     X = realify(X_rx)
@@ -156,6 +157,66 @@ def demodulate_kmeans(X_rx, mod_dict):
     model.fit(X)
 
     return model
+
+
+def classifier_model(layers_props_lst: list, loss_fn: tf.keras.losses.Loss):
+    """Crea un modelo clasificador de red neuronal,
+    con un número máximo de neuronas en la primera capa oculta,
+    y un número subsecuente correspondiente a la mitad del anterior.
+
+    :param layers_props_lst: lista de parámetros de la red neuronal
+    :param loss_fn: función a optimizar en la red neuronal
+    :return: modelo compilado
+    """
+    model = tf.keras.Sequential()
+    # Capas ocultas
+    for i, layer_props in enumerate(layers_props_lst):
+        if i == 0:
+            # 2 entradas, correspondientes a I, Q
+            model.add(tf.keras.layers.Dense(**layer_props, input_dim=2))
+        else:
+            model.add(tf.keras.layers.Dense(**layer_props))
+
+    # Clasificador
+    model.add(tf.keras.layers.Dense(units=16, activation="softmax"))
+
+    # Compilar modelo
+    model.compile(loss=loss_fn(), optimizer="adam")
+
+    return model
+
+
+def demodulate_neural(X_rx, sym_tx, layer_props_lst, loss_fn, train_size):
+    """
+    Demodula usando una red neuronal.
+
+    :param X_rx: constelación recibida
+    :param sym_tx: símbolos transmitidos
+    :param layers_props_lst: lista de parámetros de la red neuronal
+    :param loss_fn: función a optimizar en la red neuronal
+    :param train_size: fracción de datos para entrenamiento
+    :return: constelación demodulada
+    """
+    X = realify(X_rx)
+    y = sym_tx
+
+    X_train, _, y_train, _ = train_test_split(X, y, train_size=train_size)
+
+    # Modelo clasificador
+    model = classifier_model(layer_props_lst, loss_fn)
+    callback = tf.keras.callbacks.EarlyStopping(
+        monitor="loss", patience=300, mode="min", restore_best_weights=True
+    )
+    model.fit(
+        X_train,
+        y_train,
+        epochs=5000,
+        batch_size=64,
+        verbose=0,
+        callbacks=[callback],
+    )
+
+    return model.predict(X)
 
 
 def find_best_params(model, param_grid, X_rx, sym_tx):
