@@ -1,17 +1,28 @@
-""" Funciones comunes para aplicaciones de modulación y
-demodulación 16QAM
-"""
 import numpy as np
 import scipy as sp
-import tensorflow as tf
+import json
+import os
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.cluster import KMeans
 from sklearn.svm import SVC
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import GridSearchCV, KFold, train_test_split
+from sklearn.preprocessing import StandardScaler
+
+from typing import Dict, Optional, List, Union
+
+import warnings
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=ImportWarning)
+    import tensorflow as tf
 
 """
-Diccionario para modular símbolos 16QAM
+Demodulation dictionary for 16-QAM symbols.
+
+MOD_DICT is a dictionary that maps integer values (0 to 15) to complex numbers representing the 16-QAM constellation points.
+The keys in the dictionary correspond to the binary representation of the symbols, while the values represent the complex
+coordinates of the symbols in the 16-QAM constellation.
 """
 MOD_DICT = {
     0: -3 + 3j,  # 0000
@@ -33,199 +44,330 @@ MOD_DICT = {
 }
 
 
-def mod_norm(const, power: float = 1.0):
-    """Calcula el coeficiente de escala para normalizar una señal dada
-    una potencia promedio.
+def mod_norm(const: np.ndarray, power: float = 1.0) -> float:
+    """
+    Modify the scale of a given constellation.
 
-    :param const: constelación.
-    :param power - float : potencia promedio deseada.
-    :return: coeficiente de escala.
+    The modified normalization factor is calculated based on the desired power, allowing the scale
+    of the constellation to be adjusted. This is useful for mapping the constellation to a specific
+    range, such as -1 to 1 or -3 to 3.
+
+    Parameters:
+        const (np.ndarray): The input constellation for which the scale is modified.
+            It should be a NumPy array of complex numbers representing the constellation points.
+        power (float, optional): The desired power that determines the new scale of the constellation.
+            A higher power results in a larger scale. Default is 1.0.
+
+    Returns:
+        float: The modified normalization factor, which can be used to adjust the scale of the constellation.
     """
     constPow = np.mean([x**2 for x in np.abs(const)])
     scale = np.sqrt(power / constPow)
     return scale
 
 
-def calc_noise(snr: float, X):
-    """Añade ruido a un vector.
+def calc_noise(X: np.ndarray, snr: float) -> np.ndarray:
+    """
+    Adds noise to a vector to achieve a desired Signal-to-Noise Ratio (SNR).
 
-    :param snr - float : relación señal a ruido (SNR)
-    :param X: vector original
-    :return: vector con ruido
+    Parameters:
+        X (np.ndarray): Input vector to which noise is applied.
+        snr (float): Desired Signal-to-Noise Ratio (SNR) in dB.
+
+    Returns:
+        np.ndarray: Vector with added noise.
+
+    Example:
+        >>> X = np.array([1, 2, 3, 4, 5])
+        >>> snr = 20
+        >>> calc_noise(X, snr)
+        array([ 0.82484866,  2.3142245 ,  3.57619233,  3.34866241,  4.87691381])
     """
     X_avg_p = np.mean(np.power(X, 2))
     X_avg_db = 10 * np.log10(X_avg_p)
 
     noise_avg_db = X_avg_db - snr
     noise_avg_p = np.power(10, noise_avg_db / 10)
-    # Al no poner el parámetro loc se asume media 0
+
+    # Setting mean to 0 (loc=0) by default for the normal distribution
     noise = np.random.normal(scale=np.sqrt(noise_avg_p), size=len(X))
     return X + noise
 
 
-def add_awgn(snr: float, X):
-    """Añade ruido a una constelación.
+def add_awgn(X: np.ndarray, snr: float) -> np.ndarray:
+    """
+    Adds additive white Gaussian noise (AWGN) to a constellation.
 
-    :param snr: relación señal a ruido (SNR)
-    :param X: constelación original
-    :return: constelación con ruido
+    The AWGN is added independently to the real and imaginary parts of the complex constellation.
+
+    Parameters:
+        snr (float): Signal-to-Noise Ratio (SNR) in dB.
+        X (np.ndarray): Original constellation.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: Constellation with added noise, represented by the real and imaginary parts.
     """
     Xr = np.real(X)
     Xi = np.imag(X)
-    return (calc_noise(snr, Xr), calc_noise(snr, Xi))
+    return calc_noise(Xr, snr) + 1j * calc_noise(Xi, snr)
 
 
-def realify(X):
-    """Transforma un vector de números complejos en un vector de pares,
-    real e imaginario de tipo flotante.
+def realify(X: np.ndarray) -> np.ndarray:
+    """
+    Transforms a vector of complex numbers into a pair of real and imaginary floats.
 
-    :param X: constelación recibida
-    :return: constelación transformada"""
+    Parameters:
+        X (np.ndarray): Received constellation.
 
+    Returns:
+        np.ndarray: Transformed constellation.
+    """
     return np.array([X.real, X.imag]).T
 
 
-def demodulate(X_rx, mod_dict):
-    """Demodula usando el método tradicional de rejilla.
+def demodulate(X_rx: np.ndarray, mod_dict: dict) -> np.ndarray:
+    """
+    Demodulates using the traditional grid-based method.
 
-    :param X_rx: constelación recibida
-    :param mod_dict: diccionario de modulación
-    :return: constelación demodulada"""
+    Parameters:
+        X_rx (np.ndarray): Received constellation.
+        mod_dict (dict): Modulation dictionary.
+
+    Returns:
+        np.ndarray: Demodulated constellation.
+    """
     demodulated = np.empty(len(X_rx), dtype=int)
 
     for i, x in enumerate(X_rx):
-        # Distancia a cada centroide
+        # Distance to each centroid
         dist = np.abs(np.array(list(mod_dict.values())) - x)
-        # Índice del valor mínimo de distancia
-        index = list(dist).index(np.min(dist))
-        index = np.argmin(dist).flatten()
-        # Centroide más cercano al símbolo
+        # Index of the minimum distance value
+        index = np.argmin(dist)
+        # Nearest centroid to the symbol
         demodulated[i] = index
+
     return demodulated
 
 
-def demodulate_knn(X_rx, sym_tx, k, train_size=0.4):
-    """Demodula usando KNN.
-
-    :param X_rx: constelación recibida
-    :param sym_tx: símbolos transmitidos
-    :param k: parámetro k del algoritmo KNN
-    :param train_size: fracción de datos para entrenamiento
-    :return: constelación demodulada
+def kfold_cross_validation(
+    X: np.ndarray, y: np.ndarray, n_splits: int, algorithm_func, *args, **kwargs
+) -> np.ndarray:
     """
+    Performs k-fold cross-validation using the specified algorithm function.
+
+    Parameters:
+        X : np.ndarray
+            Input data.
+        y : np.ndarray
+            Target labels.
+        n_splits : int
+            Number of folds.
+        algorithm_func : callable
+            Algorithm function to be used for each fold.
+        *args : Any
+            Variable length arguments to be passed to the algorithm function.
+        **kwargs : Any
+            Keyword arguments to be passed to the algorithm function.
+
+    Returns:
+        np.ndarray
+            Results for each fold.
+    """
+    results = []
+    kf = KFold(n_splits=n_splits)
+
+    for train_index, test_index in kf.split(X):
+        X_train, X_test = X[train_index], X[test_index]
+        y_train, y_test = y[train_index], y[test_index]
+
+        result = algorithm_func(X_train, y_train, X_test, y_test, *args, **kwargs)
+        results.append(result)
+
+    return np.array(results)
+
+
+def demodulate_knn(
+    X_rx: np.ndarray, sym_tx: np.ndarray, k: int, n_splits: int = 5
+) -> np.ndarray:
+    """
+    Demodulates using KNN with k-fold cross-validation.
+
+    Parameters:
+        X_rx : np.ndarray
+            Received constellation.
+        sym_tx : np.ndarray
+            Transmitted symbols.
+        k : int
+            Parameter k for the KNN algorithm.
+
+    Returns:
+        np.ndarray
+            Demodulated constellation.
+    """
+
+    def algorithm_func(X_train, y_train, X_test, k):
+        model = KNeighborsClassifier(n_neighbors=k)
+        model.fit(X_train, y_train)
+        return model.predict(X_test)
+
     X = realify(X_rx)
     y = sym_tx
 
-    X_train, _, y_train, _ = train_test_split(X, y, train_size=train_size)
-
-    # Número de vecinos
-    model = KNeighborsClassifier(n_neighbors=k)
-    model.fit(X_train, y_train)
-    return model.predict(X)
+    return kfold_cross_validation(X, y, n_splits, algorithm_func, k=k)
 
 
-def demodulate_svm(X_rx, sym_tx, C, gamma, train_size=0.4):
-    """Demodula usando SVM.
-
-    :param X_rx: constelación recibida
-    :param sym_tx: símbolos transmitidos
-    :param C: parámetro C del algoritmo SVM
-    :param gamma: parámetro gamma del algoritmo SVM
-    :param train_size: fracción de datos para entrenamiento
-    :return: constelación demodulada
+def demodulate_svm(
+    X_rx: np.ndarray, sym_tx: np.ndarray, C: float, gamma: float, n_splits: int = 5
+) -> np.ndarray:
     """
+    Demodulates using SVM with k-fold cross-validation.
+
+    Parameters:
+        X_rx : np.ndarray
+            Received constellation.
+        sym_tx : np.ndarray
+            Transmitted symbols.
+        C : float
+            Parameter C for the SVM algorithm.
+        gamma : float
+            Parameter gamma for the SVM algorithm.
+        n_splits : int, optional
+            Number of folds for k-fold cross-validation. Default is 5.
+
+    Returns:
+        np.ndarray
+            Demodulated constellation.
+    """
+
+    def algorithm_func(X_train, y_train, X_test, C, gamma):
+        model = SVC(C=C, gamma=gamma)
+        model.fit(X_train, y_train)
+        return model.predict(X_test)
+
     X = realify(X_rx)
     y = sym_tx
 
-    X_train, _, y_train, _ = train_test_split(X, y, train_size=train_size)
-
-    model = SVC(C=C, gamma=gamma)
-    model.fit(X_train, y_train)
-    return model.predict(X)
+    return kfold_cross_validation(X, y, n_splits, algorithm_func, C=C, gamma=gamma)
 
 
-def demodulate_kmeans(X_rx, mod_dict):
-    """Demodula usando K-Means.
-
-    :param X_rx: constelación recibida
-    :param mod_dict: diccionario de modulación
-    :return: constelación demodulada, modelo entrenado
+def demodulate_kmeans(
+    X_rx: np.ndarray, mod_dict: dict, n_splits: int = 5
+) -> np.ndarray:
     """
+    Demodulates using K-Means with k-fold cross-validation.
+
+    Parameters:
+        X_rx : np.ndarray
+            Received constellation.
+        mod_dict : dict
+            Modulation dictionary.
+        n_splits : int, optional
+            Number of folds for cross-validation, by default 5.
+
+    Returns:
+        np.ndarray
+            Demodulated constellation.
+    """
+
+    def algorithm_func(X_train, X_test):
+        A_mc = np.array([(x.real, x.imag) for x in list(mod_dict.values())])
+        model = KMeans(n_clusters=16, n_init=1, init=A_mc)
+        model.fit(X_train)
+        return model.predict(X_test)
+
     X = realify(X_rx)
-    A_mc = [(x.real, x.imag) for x in list(mod_dict.values())]
-    model = KMeans(n_clusters=16, n_init=1, init=np.array(A_mc))
-    model.fit(X)
+    # Create an empty array as a placeholder for y
+    y = np.empty_like(X)
 
-    return model
+    return kfold_cross_validation(X, y, n_splits, algorithm_func)
 
 
-def classifier_model(layers_props_lst: list, loss_fn: tf.keras.losses.Loss):
-    """Crea un modelo clasificador de red neuronal,
-    con un número máximo de neuronas en la primera capa oculta,
-    y un número subsecuente correspondiente a la mitad del anterior.
+def classifier_model(
+    layers_props_lst: list, loss_fn: tf.keras.losses.Loss
+) -> tf.keras.models.Sequential:
+    """
+    Creates a neural network classifier model with specified layers and loss function.
 
-    :param layers_props_lst: lista de parámetros de la red neuronal
-    :param loss_fn: función a optimizar en la red neuronal
-    :return: modelo compilado
+    Parameters:
+        layers_props_lst (list): List of layer properties dictionaries.
+            Each dictionary should contain the desired properties for each layer, such as the number of units and activation function.
+        loss_fn (tf.keras.losses.Loss): Loss function to optimize in the neural network.
+
+    Returns:
+        tf.keras.models.Sequential: Compiled model.
+
     """
     model = tf.keras.Sequential()
-    # Capas ocultas
+
     for i, layer_props in enumerate(layers_props_lst):
         if i == 0:
-            # 2 entradas, correspondientes a I, Q
             model.add(tf.keras.layers.Dense(**layer_props, input_dim=2))
         else:
             model.add(tf.keras.layers.Dense(**layer_props))
 
-    # Clasificador
     model.add(tf.keras.layers.Dense(units=16, activation="softmax"))
 
-    # Compilar modelo
-    model.compile(loss=loss_fn(), optimizer="adam")
+    model.compile(loss=loss_fn, optimizer="adam")
 
     return model
 
 
-def demodulate_neural(X_rx, sym_tx, layer_props_lst, loss_fn, train_size):
+def demodulate_neural(
+    X_rx: np.ndarray,
+    sym_tx: np.ndarray,
+    layer_props_lst: list,
+    loss_fn: tf.keras.losses.Loss,
+    n_splits: int = 5,
+) -> np.ndarray:
     """
-    Demodula usando una red neuronal.
+    Demodulates using a neural network with k-fold cross-validation.
 
-    :param X_rx: constelación recibida
-    :param sym_tx: símbolos transmitidos
-    :param layers_props_lst: lista de parámetros de la red neuronal
-    :param loss_fn: función a optimizar en la red neuronal
-    :param train_size: fracción de datos para entrenamiento
-    :return: constelación demodulada
+    Parameters:
+        X_rx (np.ndarray): Received constellation.
+        sym_tx (np.ndarray): Transmitted symbols.
+        layer_props_lst (list): List of layer properties dictionaries for the neural network.
+        loss_fn (tf.keras.losses.Loss): Loss function to optimize in the neural network.
+        n_splits (int, optional): Number of folds for cross-validation. Default is 5.
+
+    Returns:
+        np.ndarray: Demodulated constellation.
     """
+
+    def algorithm_func(X_train, y_train, X_test):
+        model = classifier_model(layer_props_lst, loss_fn)
+        callback = tf.keras.callbacks.EarlyStopping(
+            monitor="loss", patience=300, mode="min", restore_best_weights=True
+        )
+        model.fit(
+            X_train,
+            y_train,
+            epochs=5000,
+            batch_size=64,
+            verbose=0,
+            callbacks=[callback],
+        )
+        return model.predict(X_test)
+
     X = realify(X_rx)
     y = sym_tx
 
-    X_train, _, y_train, _ = train_test_split(X, y, train_size=train_size)
-
-    # Modelo clasificador
-    model = classifier_model(layer_props_lst, loss_fn)
-    callback = tf.keras.callbacks.EarlyStopping(
-        monitor="loss", patience=300, mode="min", restore_best_weights=True
-    )
-    model.fit(
-        X_train,
-        y_train,
-        epochs=5000,
-        batch_size=64,
-        verbose=0,
-        callbacks=[callback],
-    )
-
-    return model.predict(X)
+    return kfold_cross_validation(X, y, n_splits, algorithm_func)
 
 
-def find_best_params(model, param_grid, X_rx, sym_tx):
-    """Encuentra los parámetros que mejor funcionan para unos datos específicos
-    :param model: modelo de ML a optimizar
-    :param param_grid: diccionario de parámetros del modelo
-    :param X: datos de entrada
-    :param y: datos de salida validados
-    :return: diccionario de parámetros optimizado
+def find_best_params(
+    model, param_grid: dict, X_rx: np.ndarray, sym_tx: np.ndarray
+) -> dict:
+    """
+    Finds the best parameters for a given model using specific data.
+
+    Parameters:
+        model: ML model to optimize.
+        param_grid: Dictionary of model parameters.
+        X_rx: Input data.
+        sym_tx: Validated output data.
+
+    Returns:
+        dict: Optimized parameter dictionary.
     """
     X = realify(X_rx)
     y = sym_tx
@@ -239,53 +381,69 @@ def find_best_params(model, param_grid, X_rx, sym_tx):
     return grid.best_params_
 
 
-def symbol_error_rate(sym_rx, sym_tx):
-    """Calcula la rata de error de símbolo.
+def symbol_error_rate(sym_rx: np.ndarray, sym_tx: np.ndarray) -> float:
+    """
+    Calculates the symbol error rate (SER).
 
-    :param sym_rx: vector de símbolos recibidos
-    :param sym_tx: vector de símbolos transmitidos
-    :return: rata de error de símbolo, cantidad de símbolos erróneos"""
-    # error = 0
+    Parameters:
+        sym_rx: Vector of received symbols.
+        sym_tx: Vector of transmitted symbols.
+
+    Returns:
+        float: Symbol error rate, the proportion of symbol errors.
+    """
     error = sum(rx != tx for rx, tx in zip(sym_rx, sym_tx))
-    SER = error / len(sym_tx)
-    return SER, error
+    ser = error / len(sym_tx)
+    return ser
 
 
-def bit_error_rate(sym_rx, sym_tx):
-    """Calcula la rata de error de bit.
+def bit_error_rate(sym_rx: np.ndarray, sym_tx: np.ndarray) -> float:
+    """
+    Calculates the bit error rate (BER).
 
-    :param sym_rx: vector de símbolos recibidos
-    :param sym_tx: vector de símbolos transmitidos
-    :return: rata de error de bit, cantidad de bits erróneos"""
-    # Se transforman los símbolos a binario
+    Parameters:
+        sym_rx: Vector of received symbols.
+        sym_tx: Vector of transmitted symbols.
+
+    Returns:
+        float: Bit error rate, the proportion of bit errors.
+    """
+    # Convert symbols to binary strings
     sym_rx_str = "".join([f"{sym:04b}" for sym in sym_rx])
     sym_tx_str = "".join([f"{sym:04b}" for sym in sym_tx])
 
     error = sum(sym_rx_str[i] != sym_tx_str[i] for i in range(len(sym_rx_str)))
-    BER = error / len(sym_rx_str)
-    return BER, error
+    ber = error / len(sym_rx_str)
+    return ber
 
 
-def curve_fit(f, x, y):
-    """Calcula los parámetros óptimos dada una función y unos puntos a optimizar.
+def curve_fit(f, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """
+    Calculates the optimal parameters given a function and data points to optimize.
 
-    :param f: función la cuál debe ser optimizada
-    :param x: coordenadas en el eje x
-    :param y: coordenadas en el eye y
-    return: parámetros optimizados para ajustar la función a las coordenadas dadas"""
+    Parameters:
+        f: Function to be optimized.
+        x: Coordinates on the x-axis.
+        y: Coordinates on the y-axis.
+
+    Returns:
+        np.ndarray: Optimized parameters to fit the function to the given coordinates.
+    """
     popt, _ = sp.optimize.curve_fit(f, x, y)
     return popt
 
 
-def sync_signals(tx, rx):
-    """Sincroniza dos señales.
-
-    :param short_signal: señal corta, usualmente la recibida
-    :param long_signal: señal larga, usualmente la transmitida
-    :return: una copia de ambas señales sincronizadas, en el mismo orden de entrada de parámetros
+def sync_signals(tx: np.ndarray, rx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
-    # Se concatena para asegurar de que el array recibido esté contenido dentro
-    # del largo.
+    Synchronizes two signals.
+
+    Parameters:
+        tx: Short signal, usually the received signal.
+        rx: Long signal, usually the transmitted signal.
+
+    Returns:
+        tuple[np.ndarray, np.ndarray]: Synchronized copies of both signals in the same order as the input parameters.
+    """
     tx_long = np.concatenate((tx, tx))
     correlation = np.abs(
         np.correlate(
@@ -295,9 +453,55 @@ def sync_signals(tx, rx):
         )
     )
     delay = np.argmax(correlation) - len(rx) + 1
-    # print(f"El retraso es de {delay} posiciones")
 
     sync_signal = tx_long[delay:]
     sync_signal = sync_signal[: len(rx)]
 
-    return sync_signal
+    return sync_signal, rx
+
+
+def save_json(
+    variables: Dict[str, Union[int, float, str, list, dict]], folder: str
+) -> None:
+    """
+    Save each variable to a separate JSON file in the specified folder.
+
+    Parameters:
+        variables (Dict[str, Union[int, float, str, list, dict]]): A dictionary containing variable names as keys
+            and their corresponding values. The values can be of type int, float, str, list, or dict.
+        folder (str): The path to the folder where the JSON files will be saved.
+
+    Returns:
+        None
+    """
+    for var_name, var_value in variables.items():
+        filepath = os.path.join(folder, f"{var_name}.json")
+        with open(filepath, "w") as f:
+            json.dump(var_value, f, indent=4)
+
+
+def load_json(
+    folder: str, variables: Optional[List[str]] = None
+) -> Dict[str, Union[int, float, str, list, dict]]:
+    """
+    Load variables from JSON files in the specified folder.
+
+    Parameters:
+        folder (str): The path to the folder containing the JSON files.
+        variables (Optional[List[str]]): A list of specific variable names to load from the JSON files.
+            If not provided (default), all variables found in the JSON files will be loaded.
+
+    Returns:
+        Dict[str, Union[int, float, str, list, dict]]: A dictionary containing the loaded variables,
+        where variable names are used as keys and their corresponding values are the loaded values.
+    """
+    loaded_variables = {}
+    files = os.listdir(folder)
+    for filename in files:
+        if filename.endswith(".json"):
+            var_name = os.path.splitext(filename)[0]
+            if variables is None or var_name in variables:
+                filepath = os.path.join(folder, filename)
+                with open(filepath, "r") as f:
+                    loaded_variables[var_name] = json.load(f)
+    return loaded_variables
