@@ -180,7 +180,7 @@ def kfold_cross_validation(
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = y[train_index], y[test_index]
 
-        result = algorithm_func(X_train, y_train, X_test, y_test, *args, **kwargs)
+        result = algorithm_func(X_train, y_train, X_test, *args, **kwargs)
         results.append(result)
 
     return np.array(results)
@@ -269,7 +269,7 @@ def demodulate_kmeans(
             Demodulated constellation.
     """
 
-    def algorithm_func(X_train, X_test):
+    def algorithm_func(X_train, X_test, _):
         A_mc = np.array([(x.real, x.imag) for x in list(mod_dict.values())])
         model = KMeans(n_clusters=16, n_init=1, init=A_mc)
         model.fit(X_train)
