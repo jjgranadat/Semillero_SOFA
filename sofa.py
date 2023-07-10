@@ -122,7 +122,7 @@ def realify(X: np.ndarray) -> np.ndarray:
     Returns:
         np.ndarray: Transformed constellation.
     """
-    return np.array([X.real, X.imag]).T
+    return np.column_stack((X.real, X.imag))
 
 
 def demodulate(X_rx: np.ndarray, mod_dict: dict) -> np.ndarray:
@@ -178,7 +178,7 @@ def kfold_cross_validation(
 
     for train_index, test_index in kf.split(X):
         X_train, X_test = X[train_index], X[test_index]
-        y_train, y_test = y[train_index], y[test_index]
+        y_train, _ = y[train_index], y[test_index]
 
         result = algorithm_func(X_train, y_train, X_test, *args, **kwargs)
         results.append(result)
@@ -269,7 +269,7 @@ def demodulate_kmeans(
             Demodulated constellation.
     """
 
-    def algorithm_func(X_train, X_test, _):
+    def algorithm_func(X_train, _, X_test):
         A_mc = np.array([(x.real, x.imag) for x in list(mod_dict.values())])
         model = KMeans(n_clusters=16, n_init=1, init=A_mc)
         model.fit(X_train)
