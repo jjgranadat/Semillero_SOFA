@@ -174,16 +174,18 @@ def kfold_cross_validation(
             Results for each fold.
     """
     results = []
+    tests = []
     kf = KFold(n_splits=n_splits)
 
     for train_index, test_index in kf.split(X):
         X_train, X_test = X[train_index], X[test_index]
-        y_train, _ = y[train_index], y[test_index]
+        y_train, y_test = y[train_index], y[test_index]
 
         result = algorithm_func(X_train, y_train, X_test, *args, **kwargs)
         results.append(result)
+        tests.append(y_test)
 
-    return np.array(results)
+    return np.array(results), np.array(tests)
 
 
 def demodulate_knn(
