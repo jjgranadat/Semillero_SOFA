@@ -1,15 +1,15 @@
 import numpy as np
 import scipy as sp
 import json
+import h5py
 import os
 
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.cluster import KMeans
 from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV, KFold, train_test_split
-from sklearn.preprocessing import StandardScaler
 
-from typing import Dict, Optional, List, Union
+from typing import Any, Dict, Optional, List, Union
 
 import warnings
 
@@ -151,7 +151,7 @@ def demodulate(X_rx: np.ndarray, mod_dict: dict) -> np.ndarray:
 
 def kfold_cross_validation(
     X: np.ndarray, y: np.ndarray, n_splits: int, algorithm_func, *args, **kwargs
-) -> np.ndarray:
+) -> tuple:
     """
     Performs k-fold cross-validation using the specified algorithm function.
 
@@ -170,8 +170,8 @@ def kfold_cross_validation(
             Keyword arguments to be passed to the algorithm function.
 
     Returns:
-        np.ndarray
-            Results for each fold.
+        tuple
+            Results and test data for each fold.
     """
     results = []
     tests = []
@@ -190,7 +190,7 @@ def kfold_cross_validation(
 
 def demodulate_knn(
     X_rx: np.ndarray, sym_tx: np.ndarray, k: int, n_splits: int = 5
-) -> np.ndarray:
+) -> tuple:
     """
     Demodulates using KNN with k-fold cross-validation.
 
@@ -203,8 +203,8 @@ def demodulate_knn(
             Parameter k for the KNN algorithm.
 
     Returns:
-        np.ndarray
-            Demodulated constellation.
+        tuple
+            Demodulated constellation and test data.
     """
 
     def algorithm_func(X_train, y_train, X_test, k):
@@ -220,7 +220,7 @@ def demodulate_knn(
 
 def demodulate_svm(
     X_rx: np.ndarray, sym_tx: np.ndarray, C: float, gamma: float, n_splits: int = 5
-) -> np.ndarray:
+) -> tuple:
     """
     Demodulates using SVM with k-fold cross-validation.
 
@@ -237,8 +237,8 @@ def demodulate_svm(
             Number of folds for k-fold cross-validation. Default is 5.
 
     Returns:
-        np.ndarray
-            Demodulated constellation.
+        tuple
+            Demodulated constellation and test data.
     """
 
     def algorithm_func(X_train, y_train, X_test, C, gamma):
@@ -252,9 +252,7 @@ def demodulate_svm(
     return kfold_cross_validation(X, y, n_splits, algorithm_func, C=C, gamma=gamma)
 
 
-def demodulate_kmeans(
-    X_rx: np.ndarray, mod_dict: dict, n_splits: int = 5
-) -> np.ndarray:
+def demodulate_kmeans(X_rx: np.ndarray, mod_dict: dict, n_splits: int = 5) -> tuple:
     """
     Demodulates using K-Means with k-fold cross-validation.
 
@@ -267,8 +265,8 @@ def demodulate_kmeans(
             Number of folds for cross-validation, by default 5.
 
     Returns:
-        np.ndarray
-            Demodulated constellation.
+        tuple
+            Demodulated constellation and test data.
     """
 
     def algorithm_func(X_train, _, X_test):
@@ -285,7 +283,7 @@ def demodulate_kmeans(
 
 
 def classifier_model(
-    layers_props_lst: list, loss_fn: tf.keras.losses.Loss
+    layers_props_lst: list, loss_fn: tf.keras.losses.Loss, input_dim: int
 ) -> tf.keras.models.Sequential:
     """
     Creates a neural network classifier model with specified layers and loss function.
@@ -303,7 +301,7 @@ def classifier_model(
 
     for i, layer_props in enumerate(layers_props_lst):
         if i == 0:
-            model.add(tf.keras.layers.Dense(**layer_props, input_dim=2))
+            model.add(tf.keras.layers.Dense(input_dim=input_dim, **layer_props))
         else:
             model.add(tf.keras.layers.Dense(**layer_props))
 
@@ -320,7 +318,7 @@ def demodulate_neural(
     layer_props_lst: list,
     loss_fn: tf.keras.losses.Loss,
     n_splits: int = 5,
-) -> np.ndarray:
+) -> tuple:
     """
     Demodulates using a neural network with k-fold cross-validation.
 
@@ -336,7 +334,7 @@ def demodulate_neural(
     """
 
     def algorithm_func(X_train, y_train, X_test):
-        model = classifier_model(layer_props_lst, loss_fn)
+        model = classifier_model(layer_props_lst, loss_fn, X_train.shape[0])
         callback = tf.keras.callbacks.EarlyStopping(
             monitor="loss", patience=300, mode="min", restore_best_weights=True
         )
@@ -345,10 +343,10 @@ def demodulate_neural(
             y_train,
             epochs=5000,
             batch_size=64,
-            verbose=0,
             callbacks=[callback],
+            verbose=0,
         )
-        return model.predict(X_test)
+        return model.predict(X_test, verbose=0)
 
     X = realify(X_rx)
     y = sym_tx
@@ -507,3 +505,53 @@ def load_json(
                 with open(filepath, "r") as f:
                     loaded_variables[var_name] = json.load(f)
     return loaded_variables
+
+
+def save_hdf5(data: Dict[str, Any], filename: str) -> None:
+    """
+    Save a nested dictionary to an HDF5 file.
+
+    Parameters:
+        data (dict): A nested dictionary containing the data to be saved.
+        filename (str): The name of the HDF5 file to create or overwrite.
+    Returns:
+        None
+    """
+    with h5py.File(filename, "w") as f:
+
+        def store_dict(group, data_dict):
+            for key, value in data_dict.items():
+                if isinstance(value, dict):
+                    subgroup = group.create_group(key)
+                    store_dict(subgroup, value)
+                else:
+                    group.create_dataset(key, data=value)
+
+        store_dict(f, data)
+
+
+def load_hdf5(filename: str) -> Dict[str, Any]:
+    """
+    Load data as a nested dictionary from an HDF5 file.
+
+    Parameters:
+        filename (str): The name of the HDF5 file to load data from.
+
+    Returns:
+        dict: A nested dictionary containing the loaded data.
+    """
+    loaded_data = {}
+    with h5py.File(filename, "r") as f:
+
+        def load_dict(group):
+            data_dict = {}
+            for key in group.keys():
+                if isinstance(group[key], h5py.Group):
+                    data_dict[key] = load_dict(group[key])
+                else:
+                    data_dict[key] = np.array(group[key])
+            return data_dict
+
+        loaded_data = load_dict(f)
+
+    return loaded_data
