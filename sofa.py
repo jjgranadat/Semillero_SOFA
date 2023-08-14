@@ -9,6 +9,7 @@ from sklearn.cluster import KMeans
 from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV, KFold, train_test_split
 
+from collections import defaultdict
 from typing import Any, Dict, Optional, List, Union
 
 import warnings
@@ -509,10 +510,11 @@ def load_json(
 
 def save_hdf5(data: Dict[str, Any], filename: str) -> None:
     """
-    Save a nested dictionary to an HDF5 file.
+    Save data to an HDF5 file.
+    This function recursively saves data to an HDF5 file.
 
     Parameters:
-        data (dict): A nested dictionary containing the data to be saved.
+        data (dict): A dictionary containing the data to be saved.
         filename (str): The name of the HDF5 file to create or overwrite.
 
     Returns:
@@ -522,35 +524,45 @@ def save_hdf5(data: Dict[str, Any], filename: str) -> None:
 
         def store_dict(group, data_dict):
             for key, value in data_dict.items():
-                if isinstance(value, dict):
+                if isinstance(value, (dict, defaultdict)):
                     subgroup = group.create_group(key)
                     store_dict(subgroup, value)
                 else:
-                    group.create_dataset(key, data=value)
+                    serialized = json.dumps(value)
+                    group.create_dataset(key, data=serialized)
 
         store_dict(f, data)
 
 
-def load_hdf5(filename: str) -> Dict[str, Any]:
+def load_hdf5(filename: str) -> Any:
     """
-    Load data as a nested dictionary from an HDF5 file.
+    Load data from an HDF5 file.
+    This function recursively loads data from an HDF5 file.
 
     Parameters:
         filename (str): The name of the HDF5 file to load data from.
 
     Returns:
-        dict: A nested dictionary containing the loaded data.
+        defaultdict: A nested defaultdict containing the loaded data.
     """
-    loaded_data = {}
+
+    def dict_factory():
+        return defaultdict(dict_factory)
+
+    loaded_data = defaultdict(dict_factory)
+
     with h5py.File(filename, "r") as f:
 
         def load_dict(group):
-            data_dict = {}
+            data_dict = defaultdict(dict_factory)
             for key in group.keys():
                 if isinstance(group[key], h5py.Group):
                     data_dict[key] = load_dict(group[key])
-                else:
-                    data_dict[key] = np.array(group[key])
+                elif key in group and isinstance(group[key], h5py.Dataset):
+                    if isinstance(group[key][()], bytes):
+                        data_dict[key] = json.loads(group[key][()].decode("utf-8"))
+                    else:
+                        data_dict[key] = np.array(group[key])
             return data_dict
 
         loaded_data = load_dict(f)
