@@ -10,7 +10,6 @@ from sklearn.svm import SVC
 from sklearn.model_selection import GridSearchCV, KFold, train_test_split
 
 from collections import defaultdict
-from typing import Any, Dict, Optional, List, Union
 
 import warnings
 
@@ -462,7 +461,7 @@ def sync_signals(tx: np.ndarray, rx: np.ndarray) -> tuple[np.ndarray, np.ndarray
 
 
 def save_json(
-    variables: Dict[str, Union[int, float, str, list, dict]], folder: str
+    variables: dict[str, int | float | str | list | dict], folder: str
 ) -> None:
     """
     Save each variable to a separate JSON file in the specified folder.
@@ -482,8 +481,8 @@ def save_json(
 
 
 def load_json(
-    folder: str, variables: Optional[List[str]] = None
-) -> Dict[str, Union[int, float, str, list, dict]]:
+    folder: str, variables: list[str] | None
+) -> dict[str, int | float | str | list | dict]:
     """
     Load variables from JSON files in the specified folder.
 
@@ -508,7 +507,7 @@ def load_json(
     return loaded_variables
 
 
-def save_hdf5(data: Dict[str, Any], filename: str) -> None:
+def save_hdf5(data: dict, filename: str) -> None:
     """
     Save data to an HDF5 file.
     This function recursively saves data to an HDF5 file.
@@ -534,7 +533,7 @@ def save_hdf5(data: Dict[str, Any], filename: str) -> None:
         store_dict(f, data)
 
 
-def load_hdf5(filename: str) -> Any:
+def load_hdf5(filename: str):
     """
     Load data from an HDF5 file.
     This function recursively loads data from an HDF5 file.
