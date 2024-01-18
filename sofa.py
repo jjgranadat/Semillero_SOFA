@@ -299,7 +299,8 @@ def classifier_model(
 
     for i, layer_props in enumerate(layers_props_lst):
         if i == 0:
-            model.add(tf.keras.layers.Dense(input_dim=input_dim, **layer_props))
+            model.add(tf.keras.layers.Dense(
+                input_dim=input_dim, **layer_props))
         else:
             model.add(tf.keras.layers.Dense(**layer_props))
 
@@ -529,18 +530,21 @@ def save_hdf5(data: dict, filename: str, n_backups: int = 0) -> None:
         os.rename(src, dst) if os.path.exists(src) else None
 
     # Save data to the main file
-    with h5py.File(filename, "w") as f:
+    try:
+        with h5py.File(filename, "w") as f:
 
-        def store_dict(group, data_dict):
-            for key, value in data_dict.items():
-                if isinstance(value, (dict, defaultdict)):
-                    subgroup = group.create_group(key)
-                    store_dict(subgroup, value)
-                else:
-                    serialized = json.dumps(value)
-                    group.create_dataset(key, data=serialized)
+            def store_dict(group, data_dict):
+                for key, value in data_dict.items():
+                    if isinstance(value, (dict, defaultdict)):
+                        subgroup = group.create_group(key)
+                        store_dict(subgroup, value)
+                    else:
+                        serialized = json.dumps(value)
+                        group.create_dataset(key, data=serialized)
 
-        store_dict(f, data)
+            store_dict(f, data)
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 def load_hdf5(filename: str):
@@ -569,7 +573,8 @@ def load_hdf5(filename: str):
                     data_dict[key] = load_dict(group[key])
                 elif key in group and isinstance(group[key], h5py.Dataset):
                     if isinstance(group[key][()], bytes):
-                        data_dict[key] = json.loads(group[key][()].decode("utf-8"))
+                        data_dict[key] = json.loads(
+                            group[key][()].decode("utf-8"))
                     else:
                         data_dict[key] = np.array(group[key])
             return data_dict
