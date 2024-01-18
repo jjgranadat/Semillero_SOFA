@@ -511,7 +511,7 @@ def save_hdf5(data: dict, filename: str, n_backups: int = 0) -> None:
     Save data to an HDF5 file with backup rotation.
 
     Parameters:
-        data (dict): A dictionary containing the data to be saved.
+        data (dict): A dictionary containing datasets to be saved.
         filename (str): The name of the HDF5 file to create or overwrite.
         n_backups (int): The number of backup files to keep.
 
@@ -535,12 +535,16 @@ def save_hdf5(data: dict, filename: str, n_backups: int = 0) -> None:
 
             def store_dict(group, data_dict):
                 for key, value in data_dict.items():
-                    if isinstance(value, (dict, defaultdict)):
+                    if key == "model":
+                        # Special case: JSON serialization for 'model' key
+                        serialized = json.dumps(value)
+                        group.create_dataset(key, data=serialized)
+                    elif isinstance(value, dict):
                         subgroup = group.create_group(key)
                         store_dict(subgroup, value)
                     else:
-                        serialized = json.dumps(value)
-                        group.create_dataset(key, data=serialized)
+                        # Assuming 'value' is a NumPy array
+                        group.create_dataset(key, data=value)
 
             store_dict(f, data)
     except Exception as e:
