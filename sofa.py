@@ -1,17 +1,15 @@
-import numpy as np
-import scipy as sp
 import json
-import h5py
 import os
-
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.cluster import KMeans
-from sklearn.svm import SVC
-from sklearn.model_selection import GridSearchCV, KFold, train_test_split
-
+import warnings
 from collections import defaultdict
 
-import warnings
+import h5py
+import numpy as np
+import scipy as sp
+from sklearn.cluster import KMeans
+from sklearn.model_selection import GridSearchCV, KFold, train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
 
 with warnings.catch_warnings():
     warnings.filterwarnings("ignore", category=ImportWarning)
@@ -507,18 +505,30 @@ def load_json(
     return loaded_variables
 
 
-def save_hdf5(data: dict, filename: str) -> None:
+def save_hdf5(data: dict, filename: str, n_backups: int = 0) -> None:
     """
-    Save data to an HDF5 file.
-    This function recursively saves data to an HDF5 file.
+    Save data to an HDF5 file with backup rotation.
 
     Parameters:
         data (dict): A dictionary containing the data to be saved.
         filename (str): The name of the HDF5 file to create or overwrite.
+        n_backups (int): The number of backup files to keep.
 
     Returns:
         None
     """
+
+    # Function to get backup filenames
+    def backup_filename(index):
+        return f"{filename}.bak{index}"
+
+    # Backup existing files
+    for i in range(n_backups, 0, -1):
+        src = backup_filename(i - 1) if i - 1 > 0 else filename
+        dst = backup_filename(i)
+        os.rename(src, dst) if os.path.exists(src) else None
+
+    # Save data to the main file
     with h5py.File(filename, "w") as f:
 
         def store_dict(group, data_dict):
