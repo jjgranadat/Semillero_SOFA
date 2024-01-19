@@ -578,7 +578,9 @@ def load_hdf5(filename: str):
                     if key == "model":
                         data_dict[key] = json.loads(group[key][()].decode("utf-8"))
                     else:
-                        data_dict[key] = np.array(json.loads(group[key]))
+                        data_dict[key] = np.array(
+                            json.loads(group[key].astype(np.ndarray))
+                        )
             return data_dict
 
         loaded_data = load_dict(f)
