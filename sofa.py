@@ -579,7 +579,7 @@ def load_hdf5(filename: str):
                         data_dict[key] = json.loads(group[key][()].decode("utf-8"))
                     else:
                         data_dict[key] = np.array(
-                            json.loads(group[key].astype(np.ndarray))
+                            json.loads(group[key].astype(np.ndarray)[:])
                         )
             return data_dict
 
