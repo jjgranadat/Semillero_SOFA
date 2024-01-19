@@ -574,13 +574,11 @@ def load_hdf5(filename: str):
             for key in group.keys():
                 if isinstance(group[key], h5py.Group):
                     data_dict[key] = load_dict(group[key])
-                elif key in group and isinstance(group[key], h5py.Dataset):
+                elif isinstance(group[key], h5py.Dataset):
                     if key == "model":
                         data_dict[key] = json.loads(group[key][()].decode("utf-8"))
                     else:
-                        data_dict[key] = np.array(
-                            json.loads(group[key][()].decode("utf-8"))
-                        )
+                        data_dict[key] = json.loads(group[key][()].decode("utf-8"))
             return data_dict
 
         loaded_data = load_dict(f)
