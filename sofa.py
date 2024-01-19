@@ -299,8 +299,7 @@ def classifier_model(
 
     for i, layer_props in enumerate(layers_props_lst):
         if i == 0:
-            model.add(tf.keras.layers.Dense(
-                input_dim=input_dim, **layer_props))
+            model.add(tf.keras.layers.Dense(input_dim=input_dim, **layer_props))
         else:
             model.add(tf.keras.layers.Dense(**layer_props))
 
@@ -535,13 +534,13 @@ def save_hdf5(data: dict, filename: str, n_backups: int = 0) -> None:
 
             def store_dict(group, data_dict):
                 for key, value in data_dict.items():
-                    if key == "model":
+                    if isinstance(value, dict):
+                        subgroup = group.create_group(key)
+                        store_dict(subgroup, value)
+                    elif key == "model":
                         # Special case: JSON serialization for 'model' key
                         serialized = json.dumps(value)
                         group.create_dataset(key, data=serialized)
-                    elif isinstance(value, dict):
-                        subgroup = group.create_group(key)
-                        store_dict(subgroup, value)
                     else:
                         # Assuming 'value' is a NumPy array
                         group.create_dataset(key, data=value)
@@ -577,8 +576,7 @@ def load_hdf5(filename: str):
                     data_dict[key] = load_dict(group[key])
                 elif key in group and isinstance(group[key], h5py.Dataset):
                     if key == "model":
-                        data_dict[key] = json.loads(
-                            group[key][()].decode("utf-8"))
+                        data_dict[key] = json.loads(group[key][()].decode("utf-8"))
                     else:
                         data_dict[key] = np.array(group[key])
             return data_dict
