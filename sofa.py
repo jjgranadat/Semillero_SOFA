@@ -299,8 +299,7 @@ def classifier_model(
 
     for i, layer_props in enumerate(layers_props_lst):
         if i == 0:
-            model.add(tf.keras.layers.Dense(
-                input_dim=input_dim, **layer_props))
+            model.add(tf.keras.layers.Dense(input_dim=input_dim, **layer_props))
         else:
             model.add(tf.keras.layers.Dense(**layer_props))
 
@@ -577,10 +576,9 @@ def load_hdf5(filename: str):
                     data_dict[key] = load_dict(group[key])
                 elif key in group and isinstance(group[key], h5py.Dataset):
                     if key == "model":
-                        data_dict[key] = json.loads(
-                            group[key][()].decode("utf-8"))
+                        data_dict[key] = json.loads(group[key][()].decode("utf-8"))
                     else:
-                        data_dict[key] = np.array(group[key])
+                        data_dict[key] = np.array(json.loads(group[key]))
             return data_dict
 
         loaded_data = load_dict(f)
