@@ -584,8 +584,7 @@ def load_hdf5(filename: str):
                         data_dict[key] = json.loads(
                             group[key][()].decode("utf-8"))
                     else:
-                        data_dict[key] = json.loads(
-                            group[key][()].decode("utf-8"))
+                        data_dict[key] = group[key][()]
             return data_dict
 
         loaded_data = load_dict(f)
