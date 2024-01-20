@@ -299,8 +299,7 @@ def classifier_model(
 
     for i, layer_props in enumerate(layers_props_lst):
         if i == 0:
-            model.add(tf.keras.layers.Dense(
-                input_dim=input_dim, **layer_props))
+            model.add(tf.keras.layers.Dense(input_dim=input_dim, **layer_props))
         else:
             model.add(tf.keras.layers.Dense(**layer_props))
 
@@ -459,60 +458,14 @@ def sync_signals(tx: np.ndarray, rx: np.ndarray) -> tuple[np.ndarray, np.ndarray
     return sync_signal, rx
 
 
-def save_json(
-    variables: dict[str, int | float | str | list | dict], folder: str
-) -> None:
-    """
-    Save each variable to a separate JSON file in the specified folder.
+def __do_backup(filename: str, n_backups: int):
+    """Rotate and create backups of a file.
+
+    This function performs a rotation of backups for a given file. The existing
+    backups are shifted to allow space for the new backup.
 
     Parameters:
-        variables (Dict[str, Union[int, float, str, list, dict]]): A dictionary containing variable names as keys
-            and their corresponding values. The values can be of type int, float, str, list, or dict.
-        folder (str): The path to the folder where the JSON files will be saved.
-
-    Returns:
-        None
-    """
-    for var_name, var_value in variables.items():
-        filepath = os.path.join(folder, f"{var_name}.json")
-        with open(filepath, "w") as f:
-            json.dump(var_value, f, indent=4)
-
-
-def load_json(
-    folder: str, variables: list[str] | None
-) -> dict[str, int | float | str | list | dict]:
-    """
-    Load variables from JSON files in the specified folder.
-
-    Parameters:
-        folder (str): The path to the folder containing the JSON files.
-        variables (Optional[List[str]]): A list of specific variable names to load from the JSON files.
-            If not provided (default), all variables found in the JSON files will be loaded.
-
-    Returns:
-        Dict[str, Union[int, float, str, list, dict]]: A dictionary containing the loaded variables,
-        where variable names are used as keys and their corresponding values are the loaded values.
-    """
-    loaded_variables = {}
-    files = os.listdir(folder)
-    for filename in files:
-        if filename.endswith(".json"):
-            var_name = os.path.splitext(filename)[0]
-            if variables is None or var_name in variables:
-                filepath = os.path.join(folder, filename)
-                with open(filepath, "r") as f:
-                    loaded_variables[var_name] = json.load(f)
-    return loaded_variables
-
-
-def save_hdf5(data: dict, filename: str, n_backups: int = 0) -> None:
-    """
-    Save data to an HDF5 file with backup rotation.
-
-    Parameters:
-        data (dict): A dictionary containing datasets to be saved.
-        filename (str): The name of the HDF5 file to create or overwrite.
+        filename (str): The name of the file to create or overwrite.
         n_backups (int): The number of backup files to keep.
 
     Returns:
@@ -523,14 +476,76 @@ def save_hdf5(data: dict, filename: str, n_backups: int = 0) -> None:
     def backup_filename(index):
         return f"{filename}.bak{index}"
 
-    # Backup existing files
+    # Do backup rotation
     for i in range(n_backups, 0, -1):
         src = backup_filename(i - 1) if i - 1 > 0 else filename
         dst = backup_filename(i)
         os.rename(src, dst) if os.path.exists(src) else None
 
-    # Save data to the main file
+
+def save_json(data: dict, filename: str, n_backups: int = 1) -> None:
+    """Save data to a JSON file with backup rotation.
+
+    Parameters:
+        data (dict): A dictionary containing datasets to be saved.
+        filename (str): The name of the JSON file to create or overwrite.
+        n_backups (int): The number of backup files to keep.
+
+    Returns:
+        None
+    """
+    # Do backup rotation before writing
+    __do_backup(filename, n_backups)
+
     try:
+        # Save data to the main file
+        with open(filename, "w") as json_file:
+            json.dump(data, json_file, indent=4)
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+def load_json(filename: str):
+    """Load data from a JSON file.
+
+    Parameters:
+        filename (str): The name of the JSON file to load data from.
+
+    Returns:
+        defaultdict: A nested defaultdict containing the loaded data.
+    """
+
+    def dict_factory():
+        return defaultdict(dict_factory)
+
+    loaded_data = defaultdict(dict_factory)
+
+    try:
+        # Load data from the file
+        with open(filename, "r") as json_file:
+            loaded_data = json.load(json_file)
+    except Exception as e:
+        print(f"Error: {e}")
+
+    return loaded_data
+
+
+def save_hdf5(data: dict, filename: str, n_backups: int = 1) -> None:
+    """Save data to an HDF5 file with backup rotation.
+
+    Parameters:
+        data (dict): A dictionary containing datasets to be saved.
+        filename (str): The name of the HDF5 file to create or overwrite.
+        n_backups (int): The number of backup files to keep.
+
+    Returns:
+        None
+    """
+    # Do backup rotation before writing
+    __do_backup(filename, n_backups)
+
+    try:
+        # Save data to the main file
         with h5py.File(filename, "w") as f:
 
             def store_dict(group, data_dict):
@@ -556,8 +571,8 @@ def save_hdf5(data: dict, filename: str, n_backups: int = 0) -> None:
 
 
 def load_hdf5(filename: str):
-    """
-    Load data from an HDF5 file.
+    """Load data from an HDF5 file.
+
     This function recursively loads data from an HDF5 file.
 
     Parameters:
@@ -578,11 +593,12 @@ def load_hdf5(filename: str):
             data_dict = defaultdict(dict_factory)
             for key in group.keys():
                 if isinstance(group[key], h5py.Group):
+                    # Dive deeper into the group
                     data_dict[key] = load_dict(group[key])
                 elif isinstance(group[key], h5py.Dataset):
+                    # Extract dataset
                     if key == "model":
-                        data_dict[key] = json.loads(
-                            group[key][()].decode("utf-8"))
+                        data_dict[key] = json.loads(group[key][()].decode("utf-8"))
                     else:
                         data_dict[key] = group[key][()]
             return data_dict
