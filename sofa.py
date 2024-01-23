@@ -299,7 +299,8 @@ def classifier_model(
 
     for i, layer_props in enumerate(layers_props_lst):
         if i == 0:
-            model.add(tf.keras.layers.Dense(input_dim=input_dim, **layer_props))
+            model.add(tf.keras.layers.Dense(
+                input_dim=input_dim, **layer_props))
         else:
             model.add(tf.keras.layers.Dense(**layer_props))
 
@@ -483,7 +484,7 @@ def __do_backup(filename: str, n_backups: int):
         os.rename(src, dst) if os.path.exists(src) else None
 
 
-def save_json(data: dict, filename: str, n_backups: int = 1) -> None:
+def save_json(data: dict, filename: str, n_backups: int = 3) -> None:
     """Save data to a JSON file with backup rotation.
 
     Parameters:
@@ -530,7 +531,7 @@ def load_json(filename: str):
     return loaded_data
 
 
-def save_hdf5(data: dict, filename: str, n_backups: int = 1) -> None:
+def save_hdf5(data: dict, filename: str, n_backups: int = 3) -> None:
     """Save data to an HDF5 file with backup rotation.
 
     Parameters:
@@ -598,7 +599,8 @@ def load_hdf5(filename: str):
                 elif isinstance(group[key], h5py.Dataset):
                     # Extract dataset
                     if key == "model":
-                        data_dict[key] = json.loads(group[key][()].decode("utf-8"))
+                        data_dict[key] = json.loads(
+                            group[key][()].decode("utf-8"))
                     else:
                         data_dict[key] = group[key][()]
             return data_dict
