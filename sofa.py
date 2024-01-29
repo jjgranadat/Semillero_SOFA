@@ -299,8 +299,7 @@ def classifier_model(
 
     for i, layer_props in enumerate(layers_props_lst):
         if i == 0:
-            model.add(tf.keras.layers.Dense(
-                input_dim=input_dim, **layer_props))
+            model.add(tf.keras.layers.Dense(input_dim=input_dim, **layer_props))
         else:
             model.add(tf.keras.layers.Dense(**layer_props))
 
@@ -459,11 +458,9 @@ def sync_signals(tx: np.ndarray, rx: np.ndarray) -> tuple[np.ndarray, np.ndarray
     return sync_signal, rx
 
 
-def __do_backup(filename: str, n_backups: int):
-    """Rotate and create backups of a file.
-
-    This function performs a rotation of backups for a given file. The existing
-    backups are shifted to allow space for the new backup.
+def __do_backup(filename: str, n_backups: int = 0) -> None:
+    """
+    Perform backup rotation for a file.
 
     Parameters:
         filename (str): The name of the file to create or overwrite.
@@ -477,7 +474,7 @@ def __do_backup(filename: str, n_backups: int):
     def backup_filename(index):
         return f"{filename}.bak{index}"
 
-    # Do backup rotation
+    # Backup existing files
     for i in range(n_backups, 0, -1):
         src = backup_filename(i - 1) if i - 1 > 0 else filename
         dst = backup_filename(i)
@@ -485,7 +482,8 @@ def __do_backup(filename: str, n_backups: int):
 
 
 def save_json(data: dict, filename: str, n_backups: int = 3) -> None:
-    """Save data to a JSON file with backup rotation.
+    """
+    Save data to a JSON file with backup rotation.
 
     Parameters:
         data (dict): A dictionary containing datasets to be saved.
@@ -503,11 +501,12 @@ def save_json(data: dict, filename: str, n_backups: int = 3) -> None:
         with open(filename, "w") as json_file:
             json.dump(data, json_file, indent=4)
     except Exception as e:
-        print(f"Error: {e}")
+        raise RuntimeError(f"Error: {e}")
 
 
-def load_json(filename: str):
-    """Load data from a JSON file.
+def load_json(filename: str) -> dict:
+    """
+    Load data from a JSON file.
 
     Parameters:
         filename (str): The name of the JSON file to load data from.
@@ -526,13 +525,14 @@ def load_json(filename: str):
         with open(filename, "r") as json_file:
             loaded_data = json.load(json_file)
     except Exception as e:
-        print(f"Error: {e}")
+        raise RuntimeError(f"Error: {e}")
 
     return loaded_data
 
 
 def save_hdf5(data: dict, filename: str, n_backups: int = 3) -> None:
-    """Save data to an HDF5 file with backup rotation.
+    """
+    Save data to an HDF5 file with backup rotation.
 
     Parameters:
         data (dict): A dictionary containing datasets to be saved.
@@ -568,12 +568,12 @@ def save_hdf5(data: dict, filename: str, n_backups: int = 3) -> None:
 
             store_dict(f, data)
     except Exception as e:
-        print(f"Error: {e}")
+        raise RuntimeError(f"Error: {e}")
 
 
 def load_hdf5(filename: str):
-    """Load data from an HDF5 file.
-
+    """
+    Load data from an HDF5 file.
     This function recursively loads data from an HDF5 file.
 
     Parameters:
@@ -594,13 +594,10 @@ def load_hdf5(filename: str):
             data_dict = defaultdict(dict_factory)
             for key in group.keys():
                 if isinstance(group[key], h5py.Group):
-                    # Dive deeper into the group
                     data_dict[key] = load_dict(group[key])
                 elif isinstance(group[key], h5py.Dataset):
-                    # Extract dataset
                     if key == "model":
-                        data_dict[key] = json.loads(
-                            group[key][()].decode("utf-8"))
+                        data_dict[key] = json.loads(group[key][()].decode("utf-8"))
                     else:
                         data_dict[key] = group[key][()]
             return data_dict
