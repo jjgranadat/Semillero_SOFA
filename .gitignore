@@ -1,0 +1,8 @@
+.ipynb_checkpoints
+.virtual_documents
+__pycache__
+Demodulation/Data
+ICI_Project/papers
+ICI_Project/Databases
+.~lock*
+*.back[0-9]*
