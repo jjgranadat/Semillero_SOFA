@@ -6,3 +6,4 @@ ICI_Project/papers
 ICI_Project/Databases
 .~lock*
 *.bak[0-9]*
+results/
